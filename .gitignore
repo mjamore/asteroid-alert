@@ -24,3 +24,5 @@ jspm_packages
 
 # ENV variables
 .env
+
+.DS_Store

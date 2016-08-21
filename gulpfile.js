@@ -7,7 +7,7 @@ var gulp = require('gulp'),
 
 
 gulp.task('sass', function() {
-	return gulp.src('public/stylesheets/sass/*.scss')
+	return gulp.src(['public/stylesheets/lib/materialize/sass/*.scss', 'public/stylesheets/sass/*.scss'])
 		.pipe(sass().on('error', sass.logError))
 		.pipe(minifycss())
 		.pipe(gulp.dest('public/stylesheets/css'))
