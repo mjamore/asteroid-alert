@@ -112,21 +112,14 @@ var getDate = function() {
 	return today.getFullYear() + '-' + month + '-' + today.getDate();
 }
 
-var buildAsteroidHTML = function(asteroidData) {
-	return asteroidHTML;
+var formatAsteroidData = function(sortedAsteroidData) {
+	return formattedAstroidData;
 }
 
-var getCompleteHTML = function(asteroidHTML) {
-	var openingHTML = '<!DOCTYPE html><html><head><title>Are we going to die today?</title></head><body><div class="container">';
-	var closingHTML = '</div></body></html>';
-
-	return openingHTML + asteroidHTML + closingHTML;
-}
 
 var init = function(callback) {
 	return getAsteroidData()
 		.then(sortAsteroidData)
-		// .then(buildAsteroidHTML)
-		// .then(getCompleteHTML)
+		// .then(formatAsteroidData)
 		.nodeify(callback);
 }
