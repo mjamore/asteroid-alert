@@ -1,71 +1,252 @@
 <!DOCTYPE html>
 <html>
 <head>
-	<title>Are we going to die today?</title>
-	<!--Import Google Icon Font-->
+	<title>Near Earth Objects Report For Today</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 	<link href="http://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-	<!--Import materialize.css-->
 	<link type="text/css" rel="stylesheet" href="stylesheets/css/materialize.css"  media="screen,projection"/>
 	<link rel="stylesheet" type="text/css" href="stylesheets/css/style.css">
-
-	<!--Let browser know website is optimized for mobile-->
-	<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 </head>
-<body class="teal lighten-2">
-	<nav class="teal lighten-2">
+<body class="blue-grey darken-2">
+	<nav class="blue-grey darken-4">
 		<div class="nav-wrapper">
-			<a href="#" class="brand-logo">Logo</a>
+			<a href="#" class="brand-logo"><img src="images/logo.png"><span>Asteroid Watch</span></a>
 			<ul id="nav-mobile" class="right hide-on-med-and-down">
-			<li><a href="sass.html">Sass</a></li>
-			<li><a href="badges.html">Components</a></li>
-			<li><a href="collapsible.html">JavaScript</a></li>
+			<li><a href="http://neo.jpl.nasa.gov/" target="_blank">JPL</a></li>
+			<li><a href="https://api.nasa.gov/api.html#neows-swagger" target="_blank">NASA API</a></li>
+			<li><a href="https://github.com/mjamore/asteroid-alert" target="_blank">Github</a></li>
 			</ul>
 		</div>
 	</nav>
 
-	<main class="teal lighten-3">
+	<main class="blue-grey darken-2">
 		<div class="container">
-			<h1 class="title grey-text text-lighten-5"></h1>
+			<div class="page-info white-text">
+				<div class="title">
+					<h1 class="center-align">Near Earth Objects Report</h1>
+					<h5 class="title-date center-align"></h5>				
+				</div>
 
-			<div class="card">
-			    <div class="card-image waves-effect waves-block waves-light">
-			      <img class="activator" src="http://i.dailymail.co.uk/i/pix/2015/10/09/15/2D3CE18200000578-3266392-image-a-30_1444399511801.jpg">
-			    </div>
+				<div class="disclaimer">
+					<h6>** All data on this site is pulled on page load from the <a href="https://api.nasa.gov/api.html#neows-swagger" target="_blank">The NASA Near Earth Object Web Service API</a> and is sorted to show the closest objects to Earth first.</h6>
+				</div>
+			</div>
+
+			<div class="card red lighten-3 center-align">
 			    <div class="card-content">
-			      <span class="card-title activator grey-text text-darken-4">Asteroid name<i class="material-icons right">more_vert</i></span>
-			      <p><a href="#">This is a link</a></p>
+			    	<div class="row">
+			    		<div class="col s12">
+			    			<div class="col s4 offset-s4">
+			    				<h4 class="asteroid-name grey-text text-darken-4">2010 CB55</h4>
+			    				<a href="http://ssd.jpl.nasa.gov/sbdb.cgi?sstr=3689017" target="_blank">JPL Link</a>
+			    			</div>
+			    			<div class="col s4">
+			    				<p class="right-align"><span class="hazard-status red lighten-2">Hazardous</span></p>
+			    			</div>
+			    		</div>
+			    		<div class="row">
+			    			<div class="col s4 border-right data-block">
+			    				<div class="col s12">
+			    					<h3>Approach Data</h3>
+			    				</div>
+			    				<div class="col s12">
+			    					<div class="col s6">
+			    						<div class="col s12">
+			    							<div class="data-primary">11/17/2016</div>
+			    						</div>
+			    						<div class="col s12">
+			    							<div class="data-secondary">7:13 AM</div>
+			    						</div>
+			    						<div class="col s12">
+			    							<div class="data-label">Closest Approach</div>
+			    						</div>
+			    					</div>
+			    					<div class="col s6">
+			    						<div class="col s12">
+			    							<div class="data-primary">46,203,576 <span class="data-units">mi.</span></div>
+			    						</div>
+			    						<div class="col s12">
+			    							<div class="data-label">Miss Distance</div>
+			    						</div>
+			    					</div>
+			    				</div>
+			    			</div>
+			    			<div class="col s4 border-right data-block">
+			    				<div class="col s12">
+			    					<h3>Characteristics</h3>
+			    				</div>
+			    				<div class="col s12">
+			    					<div class="col s6">
+			    						<div class="col s12">
+			    							<div class="data-primary">182 <span class="data-units">ft.</span></div>
+			    						</div>
+			    						<div class="col s12">
+			    							<div class="data-label">Est. Min. Diameter</div>
+			    						</div>
+			    					</div>
+			    					<div class="col s6">
+			    						<div class="col s12">
+			    							<div class="data-primary">487 <span class="data-units">ft.</span></div>
+			    						</div>
+			    						<div class="col s12">
+			    							<div class="data-label">Est. Max. Diameter</div>
+			    						</div>
+			    					</div>
+			    				</div>
+			    				<div class="col s12">
+			    					<div class="data-primary">27,628 <span class="data-units">mph</span></div>
+			    					<div class="data-label">Relative Velocity</div>
+			    				</div>
+			    			</div>
+			    			<div class="col s4 data-block">
+			    				<div class="col s12">
+			    					<h3>Orbital Data</h3>
+			    				</div>
+			    				<div class="col s12">
+			    					<div class="col s6">
+			    						<div class="col s12">
+			    							<div class="data-primary">441 <span class="data-units">days</span></div>
+			    						</div>
+			    						<div class="col s12">
+			    							<div class="data-label">Orbital Period</div>
+			    						</div>
+			    					</div>
+			    					<div class="col s6">
+			    						<div class="col s12">
+			    							<div class="data-primary">01/07/2016</div>
+			    						</div>
+			    						<div class="col s12">
+			    							<div class="data-secondary">12:45 PM</div>
+			    						</div>
+			    						<div class="col s12">
+			    							<div class="data-label">Orbit Determination Date</div>
+			    						</div>
+			    					</div>
+			    				</div>
+			    			</div>
+			    		</div>
+			    	</div>
 			    </div>
-			    <div class="card-reveal">
-			      <span class="card-title grey-text text-darken-4">Card Title<i class="material-icons right">close</i></span>
-			      <p>Here is some more information about this product that is only revealed once clicked on.</p>
+			  </div>
+			<div class="card green lighten-3 center-align">
+			    <div class="card-content">
+			    	<div class="row">
+			    		<div class="col s12">
+			    			<div class="col s4 offset-s4">
+			    				<h4 class="asteroid-name grey-text text-darken-4">2014 RW22</h4>
+			    				<a href="http://ssd.jpl.nasa.gov/sbdb.cgi?sstr=3689017" target="_blank">JPL Link</a>
+			    			</div>
+			    			<div class="col s4">
+			    				<p class="right-align"><span class="hazard-status green lighten-2">Not Hazardous</span></p>
+			    			</div>
+			    		</div>
+			    		<div class="row">
+			    			<div class="col s4 border-right data-block">
+			    				<div class="col s12">
+			    					<h3>Approach Data</h3>
+			    				</div>
+			    				<div class="col s12">
+			    					<div class="col s6">
+			    						<div class="col s12">
+			    							<div class="data-primary">11/17/2016</div>
+			    						</div>
+			    						<div class="col s12">
+			    							<div class="data-secondary">7:13 AM</div>
+			    						</div>
+			    						<div class="col s12">
+			    							<div class="data-label">Closest Approach</div>
+			    						</div>
+			    					</div>
+			    					<div class="col s6">
+			    						<div class="col s12">
+			    							<div class="data-primary">46,203,576 <span class="data-units">mi.</span></div>
+			    						</div>
+			    						<div class="col s12">
+			    							<div class="data-label">Miss Distance</div>
+			    						</div>
+			    					</div>
+			    				</div>
+			    			</div>
+			    			<div class="col s4 border-right data-block">
+			    				<div class="col s12">
+			    					<h3>Characteristics</h3>
+			    				</div>
+			    				<div class="col s12">
+			    					<div class="col s6">
+			    						<div class="col s12">
+			    							<div class="data-primary">182 <span class="data-units">ft.</span></div>
+			    						</div>
+			    						<div class="col s12">
+			    							<div class="data-label">Est. Min. Diameter</div>
+			    						</div>
+			    					</div>
+			    					<div class="col s6">
+			    						<div class="col s12">
+			    							<div class="data-primary">487 <span class="data-units">ft.</span></div>
+			    						</div>
+			    						<div class="col s12">
+			    							<div class="data-label">Est. Max. Diameter</div>
+			    						</div>
+			    					</div>
+			    				</div>
+			    				<div class="col s12">
+			    					<div class="data-primary">27,628 <span class="data-units">mph</span></div>
+			    					<div class="data-label">Relative Velocity</div>
+			    				</div>
+			    			</div>
+			    			<div class="col s4 data-block">
+			    				<div class="col s12">
+			    					<h3>Orbital Data</h3>
+			    				</div>
+			    				<div class="col s12">
+			    					<div class="col s6">
+			    						<div class="col s12">
+			    							<div class="data-primary">441 <span class="data-units">days</span></div>
+			    						</div>
+			    						<div class="col s12">
+			    							<div class="data-label">Orbital Period</div>
+			    						</div>
+			    					</div>
+			    					<div class="col s6">
+			    						<div class="col s12">
+			    							<div class="data-primary">01/07/2016</div>
+			    						</div>
+			    						<div class="col s12">
+			    							<div class="data-secondary">12:45 PM</div>
+			    						</div>
+			    						<div class="col s12">
+			    							<div class="data-label">Orbit Determination Date</div>
+			    						</div>
+			    					</div>
+			    				</div>
+			    			</div>
+			    		</div>
+			    	</div>
 			    </div>
 			  </div>
 
 		</div>
 	</main>
 
-	<footer class="page-footer teal lighten-2">
+	<footer class="page-footer blue-grey darken-4">
 		<div class="container">
 			<div class="row">
 				<div class="col l6 s12">
-				<h5 class="white-text">Footer Content</h5>
-				<p class="grey-text text-lighten-4">You can use rows and columns here to organize your footer content.</p>
+				<!-- <a href="#" class="brand-logo"><img src="images/logo.png"><span>Asteroid Watch</span></a> -->
+				<a href="#" class="brand-logo valign-wrapper">
+					<img src="images/logo.png">
+					<h5 class="valign">Asteroid Watch</h5>
+				</a>
+				<p class="grey-text text-lighten-4">This site was built using <a href="https://nodejs.org/en/" target="_blank">Node.js</a>, <a href="https://api.nasa.gov/api.html#neows-swagger" target="_blank">The NASA Near Earth Object Web Service API</a>, and <a href="http://materializecss.com/" target="_blank">Materialize.css</a>  View this project on <a href="https://github.com/mjamore/asteroid-alert" target="_blank">Github</a>.</p>
 				</div>
 				<div class="col l4 offset-l2 s12">
 				<h5 class="white-text">Links</h5>
 				<ul>
-					<li><a class="grey-text text-lighten-3" href="#!">Link 1</a></li>
-					<li><a class="grey-text text-lighten-3" href="#!">Link 2</a></li>
-					<li><a class="grey-text text-lighten-3" href="#!">Link 3</a></li>
-					<li><a class="grey-text text-lighten-3" href="#!">Link 4</a></li>
+					<li><a class="grey-text text-lighten-3" href="http://neo.jpl.nasa.gov/" target="_blank">JPL</a></li>
+					<li><a class="grey-text text-lighten-3" href="https://api.nasa.gov/api.html#neows-swagger" target="_blank">NASA API</a></li>
+					<li><a class="grey-text text-lighten-3" href="https://github.com/mjamore/asteroid-alert" target="_blank">Github</a></li>
 				</ul>
 				</div>
-			</div>
-		</div>
-		<div class="footer-copyright">
-			<div class="container">
-				© 2014 Copyright Text
-				<a class="grey-text text-lighten-4 right" href="#!">More Links</a>
 			</div>
 		</div>
 	</footer>

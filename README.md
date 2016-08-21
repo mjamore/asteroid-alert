@@ -12,9 +12,14 @@ This application requires a NASA API key, which can be acquired from the [nasa.g
 - [ ] Get promises returning correctly
 - [ ] Format data on backend
 - [ ] Finish styling front end
-- [ ] Update navbar content
-- [ ] Update footer content
+- [ ] Make it clear to the user why the cards are sorted the way they are
+- [ ] Add fork on Gihub?
+- [ ] Mobile nav?
+- [ ] Add count to top left of each card
+
 
 ## Completed:
 - [x] Factor HTML out into separate file and make NASA API request via AJAX
 - [x] Add Materialize.css
+- [x] Update navbar content
+- [x] Update footer content
