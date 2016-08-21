@@ -1,6 +1,7 @@
 // Variables
 $link-color: white;
 $border: 1px solid black;
+$card-header-margin-top: 1.14rem;
 
 // Sticky Footer
 body {
@@ -49,8 +50,9 @@ div {
 			font-size: 2.2rem;
 			margin-bottom: 0;
 		}
-		h5 {
+		.title-date {
 			font-size: 1.3rem;
+			height: 21px;
 		}
 	}
 	.disclaimer {
@@ -60,11 +62,33 @@ div {
 
 .card {
 	margin: 1rem 0 2rem;
+	.card-header {
+		margin-bottom: 30px;
+		.header-highlight {
+			margin-top: $card-header-margin-top;
+			padding: 5px 10px;
+			border-radius: 15px;
+		}
+		.hazard-status {
+		    float: right;
+		}
+		.asteroid-count {
+			float: left;
+		}
+	}
 	.asteroid-name {
 		font-weight: 300;
+		margin-top: $card-header-margin-top;
+	}
+	.data-point {
+		margin: 12px 0;
 	}
 	.data-primary {
 		font-size: 18px;
+		font-weight: 400;
+	}
+	.data-secondary {
+		font-size: 16px;
 		font-weight: 400;
 	}
 	.data-block {
@@ -75,14 +99,9 @@ div {
 		h3 {
 			font-size: 1.5rem;
 			margin-bottom: 2rem;
+			margin-top: .5rem;
 		}
 	}
-}
-
-.hazard-status {
-	padding: 5px 10px;
-    border-radius: 25px;
-    color: white;
 }
 
 .border-right {
