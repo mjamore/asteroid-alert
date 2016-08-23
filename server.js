@@ -21,9 +21,7 @@ app.get('/', function(req, res) {
 });
 
 app.get('/getAstroidData', function(req, res) {
-	var shit = init();
-	console.log(shit);
-	res.send(shit);
+	res.send(init());
 });
 
 

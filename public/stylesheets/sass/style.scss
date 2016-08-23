@@ -80,30 +80,45 @@ div {
 		font-weight: 300;
 		margin-top: $card-header-margin-top;
 	}
-	.data-point {
-		margin: 12px 0;
-	}
-	.data-primary {
-		font-size: 18px;
-		font-weight: 400;
-	}
-	.data-secondary {
-		font-size: 16px;
-		font-weight: 400;
-	}
 	.data-block {
-		height: 230px;
+		height: 220px;
 		.col {
 			padding: 0;
 		}
 		h3 {
 			font-size: 1.5rem;
-			margin-bottom: 2rem;
+			margin-bottom: 1rem;
 			margin-top: .5rem;
+		}
+		.data-point {
+			margin: 12px 0;
+		}
+		.data-primary {
+			font-size: 18px;
+			font-weight: 400;
+		}
+		.data-secondary {
+			font-size: 16px;
+			font-weight: 400;
+		}
+		.data-label {
+			display: inline-block;
+			&:hover {
+				cursor: help;
+			}
 		}
 	}
 }
 
 .border-right {
 	border-right: $border;
+}
+
+
+@media only screen and (max-width: 601px) {
+	.card {
+		.data-block {
+			height: 150px;
+		}
+	}
 }

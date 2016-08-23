@@ -15,6 +15,7 @@ This application requires a NASA API key, which can be acquired from the [nasa.g
 - [ ] Make it clear to the user why the cards are sorted the way they are
 - [ ] Add fork on Gihub?
 - [ ] Mobile nav?
+- [ ] Fix link color
 
 
 ## Completed:
@@ -23,3 +24,5 @@ This application requires a NASA API key, which can be acquired from the [nasa.g
 - [x] Update navbar content
 - [x] Update footer content
 - [x] Add count to top left of each card
+- [x] Optimize layout/styling for mobile
+- [x] Add tooltip that defines each data point (http://materializecss.com/dialogs.html)
