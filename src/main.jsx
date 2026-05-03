@@ -185,6 +185,12 @@ const METER_TO_FEET = 3.28084;
 const AU_TO_MILES = 92955807;
 const ORBIT_DISTANCE_SCALE_LD_PER_UNIT = 34;
 const ORBIT_SEGMENTS = 192;
+const EARTH_SCENE_RADIUS = 1.75;
+const MOON_RADIUS_TO_EARTH = 0.2727;
+const MOON_SCENE_RADIUS = EARTH_SCENE_RADIUS * MOON_RADIUS_TO_EARTH;
+const MOON_SCENE_DISTANCE = 8.4;
+const MOON_TEXTURE_URL = "https://s3-us-west-2.amazonaws.com/s.cdpn.io/17271/lroc_color_poles_1k.jpg";
+const MOON_DISPLACEMENT_URL = "https://s3-us-west-2.amazonaws.com/s.cdpn.io/17271/ldem_3_8bit.jpg";
 const ORBIT_LABELS = {
   APO: { label: "Apollo", description: "Earth-crossing asteroid orbit with a wider path around the Sun than Earth." },
   ATE: { label: "Aten", description: "Near-Earth asteroid orbit that stays mostly inside Earth's path around the Sun." },
@@ -396,6 +402,43 @@ function loadRealisticEarthTextures(renderer) {
   });
 
   return { dayTexture, nightTexture, bumpRoughnessCloudsTexture };
+}
+
+function loadRealisticMoonTextures(renderer) {
+  const textureLoader = new THREE.TextureLoader();
+  textureLoader.setCrossOrigin("anonymous");
+  const maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
+  const anisotropy = Math.min(maxAnisotropy, 8);
+  const colorTexture = textureLoader.load(MOON_TEXTURE_URL);
+  const displacementTexture = textureLoader.load(MOON_DISPLACEMENT_URL);
+
+  colorTexture.colorSpace = THREE.SRGBColorSpace;
+  [colorTexture, displacementTexture].forEach((texture) => {
+    texture.anisotropy = anisotropy;
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.ClampToEdgeWrapping;
+  });
+
+  return { colorTexture, displacementTexture };
+}
+
+function createMoonVisual(textures) {
+  const geometry = new THREE.SphereGeometry(MOON_SCENE_RADIUS, 96, 96);
+  const material = new THREE.MeshPhongMaterial({
+    color: "#ffffff",
+    map: textures.colorTexture,
+    displacementMap: textures.displacementTexture,
+    displacementScale: MOON_SCENE_RADIUS * 0.03,
+    bumpMap: textures.displacementTexture,
+    bumpScale: MOON_SCENE_RADIUS * 0.024,
+    reflectivity: 0,
+    shininess: 0,
+  });
+  const moon = new THREE.Mesh(geometry, material);
+  moon.position.set(MOON_SCENE_DISTANCE, 0, 0);
+  moon.rotation.x = Math.PI * 0.02;
+  moon.rotation.y = Math.PI * 1.54;
+  return moon;
 }
 
 function createEarthMaterial(textures, sunDirection) {
@@ -656,18 +699,19 @@ function AsteroidScene({ objects, selectedId, progress, playing, showGrid, showT
     mount.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2("#02050a", 0.038);
-    const camera = new THREE.PerspectiveCamera(42, mount.clientWidth / mount.clientHeight, 0.1, 100);
-    camera.position.set(0, 6.2, 9.8);
-    camera.lookAt(0, 0, 0);
+    scene.fog = new THREE.FogExp2("#02050a", 0.006);
+    const camera = new THREE.PerspectiveCamera(42, mount.clientWidth / mount.clientHeight, 0.1, 260);
+    const initialTarget = new THREE.Vector3(0, 0, 0);
+    camera.position.set(0, 9.5, 22);
+    camera.lookAt(initialTarget);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     controls.enablePan = false;
     controls.minDistance = 4.2;
-    controls.maxDistance = 20;
-    controls.target.set(0, 0, 0);
+    controls.maxDistance = 60;
+    controls.target.copy(initialTarget);
     controls.update();
 
     const group = new THREE.Group();
@@ -698,7 +742,7 @@ function AsteroidScene({ objects, selectedId, progress, playing, showGrid, showT
 
     const sunDirection = sun.position.clone().normalize();
     const earthTextures = loadRealisticEarthTextures(renderer);
-    const sphereGeometry = new THREE.SphereGeometry(1.75, 160, 160);
+    const sphereGeometry = new THREE.SphereGeometry(EARTH_SCENE_RADIUS, 160, 160);
     const earth = new THREE.Mesh(sphereGeometry, createEarthMaterial(earthTextures, sunDirection));
     group.add(earth);
 
@@ -710,6 +754,14 @@ function AsteroidScene({ objects, selectedId, progress, playing, showGrid, showT
     earthOrbit.material.opacity = 0.36;
     group.add(earthOrbit);
 
+    const moonTextures = loadRealisticMoonTextures(renderer);
+    const moon = createMoonVisual(moonTextures);
+    group.add(moon);
+
+    const moonOrbit = buildEllipse(MOON_SCENE_DISTANCE, MOON_SCENE_DISTANCE, 0, "#d7d2c6", true);
+    moonOrbit.material.opacity = 0.2;
+    group.add(moonOrbit);
+
     const grid = new THREE.GridHelper(12, 24, "#234354", "#132734");
     grid.material.opacity = 0.22;
     grid.material.transparent = true;
@@ -717,7 +769,7 @@ function AsteroidScene({ objects, selectedId, progress, playing, showGrid, showT
 
     const asteroidGroup = new THREE.Group();
     group.add(asteroidGroup);
-    sceneRef.current = { asteroidGroup, grid, group, earth, atmosphere, stars, renderer, camera, controls, scene };
+    sceneRef.current = { asteroidGroup, grid, group, earth, atmosphere, moon, moonOrbit, stars, renderer, camera, controls, scene };
 
     let frame = 0;
 
@@ -740,10 +792,12 @@ function AsteroidScene({ objects, selectedId, progress, playing, showGrid, showT
       group.rotation.y = Math.sin(time * 0.08) * 0.04;
       earth.rotation.y = (simulatedDays / SIDEREAL_DAY_IN_SOLAR_DAYS) * Math.PI * 2;
       atmosphere.rotation.y = earth.rotation.y;
+      moon.rotation.y += 0.0012;
       stars.rotation.y += 0.00015;
       controls.update();
       grid.visible = current.showGrid;
       earthOrbit.visible = current.showTrails;
+      moonOrbit.visible = current.showTrails;
 
       asteroidGroup.children.forEach((child) => {
         if (child.userData.orbitLayout) {
@@ -787,11 +841,15 @@ function AsteroidScene({ objects, selectedId, progress, playing, showGrid, showT
       sphereGeometry.dispose();
       earth.material.dispose();
       atmosphere.material.dispose();
+      moon.geometry.dispose();
+      moon.material.dispose();
       controls.dispose();
       renderer.dispose();
       earthTextures.dayTexture.dispose();
       earthTextures.nightTexture.dispose();
       earthTextures.bumpRoughnessCloudsTexture.dispose();
+      moonTextures.colorTexture.dispose();
+      moonTextures.displacementTexture.dispose();
       sceneRef.current = null;
     };
   }, []);
@@ -978,9 +1036,9 @@ function Inspector({ selected, lookup }) {
         </div>
         <InfoTooltip content="MOID is the closest possible gap between Earth's orbit and this object's orbit, not necessarily today's flyby distance.">
           <div>
-          <Crosshair size={20} />
-          <span>{formatMoidMiles(selected.moid)}</span>
-          <small>Orbit gap</small>
+            <Crosshair size={20} />
+            <span>{formatMoidMiles(selected.moid)}</span>
+            <small>Orbit gap</small>
           </div>
         </InfoTooltip>
       </div>
@@ -1118,33 +1176,33 @@ function App() {
   return (
     <TooltipProvider>
       <main className="app-shell">
-      <StatusHeader date={feed.date} count={feed.count} source={source} status={status} />
-      <div className="workspace">
-        <ObjectList objects={objects} selectedId={selected.id} onSelect={setSelectedId} />
-        <section className={`scene-panel ${showGrid ? "" : "grid-off"} ${showHud ? "" : "hud-off"}`}>
-          <AsteroidScene objects={objects} selectedId={selected.id} progress={progress} playing={playing} showGrid={showGrid} showTrails={showTrails} showLabels={showLabels} showHud={showHud} />
-          {showHud && (
-            <>
-              <div className="scene-overlay top-left">Moon distance ~= 240,000 mi</div>
-              <div className="scene-overlay bottom-right">Selected trajectory: {selected.name}</div>
-            </>
-          )}
-        </section>
-        <Inspector selected={selected} lookup={lookup} />
-      </div>
-      <footer className="bottom-deck">
-        <TimelineControls progress={progress} setProgress={setProgress} playing={playing} setPlaying={setPlaying} speed={speed} setSpeed={setSpeed} />
-        <DisplayOptions
-          showGrid={showGrid}
-          setShowGrid={setShowGrid}
-          showTrails={showTrails}
-          setShowTrails={setShowTrails}
-          showLabels={showLabels}
-          setShowLabels={setShowLabels}
-          showHud={showHud}
-          setShowHud={setShowHud}
-        />
-      </footer>
+        <StatusHeader date={feed.date} count={feed.count} source={source} status={status} />
+        <div className="workspace">
+          <ObjectList objects={objects} selectedId={selected.id} onSelect={setSelectedId} />
+          <section className={`scene-panel ${showGrid ? "" : "grid-off"} ${showHud ? "" : "hud-off"}`}>
+            <AsteroidScene objects={objects} selectedId={selected.id} progress={progress} playing={playing} showGrid={showGrid} showTrails={showTrails} showLabels={showLabels} showHud={showHud} />
+            {showHud && (
+              <>
+                <div className="scene-overlay top-left">Moon distance ~= 240,000 mi</div>
+                <div className="scene-overlay bottom-right">Selected trajectory: {selected.name}</div>
+              </>
+            )}
+          </section>
+          <Inspector selected={selected} lookup={lookup} />
+        </div>
+        <footer className="bottom-deck">
+          <TimelineControls progress={progress} setProgress={setProgress} playing={playing} setPlaying={setPlaying} speed={speed} setSpeed={setSpeed} />
+          <DisplayOptions
+            showGrid={showGrid}
+            setShowGrid={setShowGrid}
+            showTrails={showTrails}
+            setShowTrails={setShowTrails}
+            showLabels={showLabels}
+            setShowLabels={setShowLabels}
+            showHud={showHud}
+            setShowHud={setShowHud}
+          />
+        </footer>
       </main>
     </TooltipProvider>
   );
