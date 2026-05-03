@@ -1,29 +1,11 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import {
-  Activity,
-  Crosshair,
-  Database,
-  FastForward,
-  Gauge,
-  Grid3X3,
-  List,
-  Pause,
-  Play,
-  Radar,
-  Rewind,
-  Satellite,
-  SkipBack,
-  SkipForward,
-  Target,
-} from "lucide-react";
+import { Activity, Crosshair, Database, FastForward, Gauge, Grid3X3, List, Pause, Play, Radar, Rewind, Satellite, SkipBack, SkipForward, Target } from "lucide-react";
 import * as THREE from "three";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import "./styles.css";
 
-const FEED_URL =
-  "https://api.nasa.gov/neo/rest/v1/feed/today?detailed=true&api_key=DEMO_KEY";
-const LOOKUP_URL =
-  "https://api.nasa.gov/neo/rest/v1/neo/3126183?api_key=DEMO_KEY";
+const NEO_DATA_URL = "/api/neo-data";
 
 const FALLBACK_FEED = {
   date: "2026-05-03",
@@ -194,6 +176,10 @@ const ORBIT_COLORS = {
 
 const SIMULATED_WINDOW_DAYS = 1;
 const BASELINE_WINDOW_SECONDS = 120;
+const SIDEREAL_DAY_IN_SOLAR_DAYS = 0.99726968;
+const LUNAR_DISTANCE_KM = 384399;
+const ORBIT_DISTANCE_SCALE_LD_PER_UNIT = 34;
+const ORBIT_SEGMENTS = 192;
 
 const parseNum = (value, fallback = 0) => {
   const parsed = Number.parseFloat(value);
@@ -212,10 +198,7 @@ function normalizeFeed(payload) {
       hazard: object.is_potentially_hazardous_asteroid,
       sentry: object.is_sentry_object,
       mag: object.absolute_magnitude_h,
-      diameter_m: [
-        object.estimated_diameter?.meters?.estimated_diameter_min,
-        object.estimated_diameter?.meters?.estimated_diameter_max,
-      ].map((value) => parseNum(value)),
+      diameter_m: [object.estimated_diameter?.meters?.estimated_diameter_min, object.estimated_diameter?.meters?.estimated_diameter_max].map((value) => parseNum(value)),
       time: approach.close_approach_date_full || approach.close_approach_date,
       velocity_kps: parseNum(approach.relative_velocity?.kilometers_per_second),
       miss_lunar: parseNum(approach.miss_distance?.lunar),
@@ -310,17 +293,9 @@ function useNeoData() {
 
     async function loadData() {
       try {
-        const [feedResponse, lookupResponse] = await Promise.all([
-          fetch(FEED_URL),
-          fetch(LOOKUP_URL),
-        ]);
-        if (!feedResponse.ok || !lookupResponse.ok) {
-          throw new Error("NASA API request failed");
-        }
-        const [feedJson, lookupJson] = await Promise.all([
-          feedResponse.json(),
-          lookupResponse.json(),
-        ]);
+        const response = await fetch(NEO_DATA_URL);
+        if (!response.ok) throw new Error("NASA API request failed");
+        const { feed: feedJson, lookup: lookupJson } = await response.json();
         if (!cancelled) {
           setData({
             feed: normalizeFeed(feedJson),
@@ -516,17 +491,15 @@ function createLabelSprite(text, color) {
   ctx.fillStyle = color;
   ctx.fillText(text.replace(/[()]/g, ""), 22, 60);
   const texture = new THREE.CanvasTexture(canvas);
-  const sprite = new THREE.Sprite(
-    new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }),
-  );
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }));
   sprite.scale.set(1.9, 0.48, 1);
   return sprite;
 }
 
 function buildEllipse(radiusX, radiusY, inclination, color, dashed = false) {
   const points = [];
-  for (let i = 0; i <= 192; i += 1) {
-    const angle = (i / 192) * Math.PI * 2;
+  for (let i = 0; i <= ORBIT_SEGMENTS; i += 1) {
+    const angle = (i / ORBIT_SEGMENTS) * Math.PI * 2;
     points.push(new THREE.Vector3(Math.cos(angle) * radiusX, 0, Math.sin(angle) * radiusY));
   }
   const geometry = new THREE.BufferGeometry().setFromPoints(points);
@@ -537,6 +510,75 @@ function buildEllipse(radiusX, radiusY, inclination, color, dashed = false) {
   line.rotation.x = THREE.MathUtils.degToRad(inclination);
   if (dashed) line.computeLineDistances();
   return line;
+}
+
+function approximateEllipseCircumference(radiusX, radiusY) {
+  const sum = radiusX + radiusY;
+  if (sum === 0) return 1;
+  const h = ((radiusX - radiusY) / sum) ** 2;
+  return Math.PI * sum * (1 + (3 * h) / (10 + Math.sqrt(4 - 3 * h)));
+}
+
+function getOrbitLayout(object, index) {
+  const radiusX = 2.55 + object.miss_lunar / 34 + index * 0.22;
+  const radiusY = 1.48 + Math.min(object.period_days || 420, 780) / 210;
+  const orbitLengthLd = approximateEllipseCircumference(radiusX, radiusY) * ORBIT_DISTANCE_SCALE_LD_PER_UNIT;
+  const travelLdPerDay = (object.velocity_kps * 86400) / LUNAR_DISTANCE_KM;
+  return {
+    radiusX,
+    radiusY,
+    inclinationDegrees: object.inclination,
+    inclinationRadians: THREE.MathUtils.degToRad(object.inclination),
+    phase: index * 1.9 + object.velocity_kps / 6,
+    periodDays: Math.max(object.period_days || 365, 1),
+    angularRateRadiansPerDay: orbitLengthLd > 0 ? (travelLdPerDay / orbitLengthLd) * Math.PI * 2 : 0,
+  };
+}
+
+function getOrbitPosition(layout, simulatedDays) {
+  const angle = layout.phase + simulatedDays * layout.angularRateRadiansPerDay;
+  return new THREE.Vector3(Math.cos(angle) * layout.radiusX, 0, Math.sin(angle) * layout.radiusY).applyAxisAngle(new THREE.Vector3(1, 0, 0), layout.inclinationRadians);
+}
+
+function createAsteroidVisual(object, index, selectedId) {
+  const selected = object.id === selectedId;
+  const color = ORBIT_COLORS[object.orbit] || "#ffffff";
+  const layout = getOrbitLayout(object, index);
+  const orbit = buildEllipse(layout.radiusX, layout.radiusY, layout.inclinationDegrees, color, selected);
+  orbit.userData = { id: object.id, kind: "orbit" };
+
+  const rock = new THREE.Mesh(
+    new THREE.IcosahedronGeometry(0.12 + Math.min(object.diameter_m[1] || 55, 120) / 650, 2),
+    new THREE.MeshStandardMaterial({
+      color: selected ? "#ffd06a" : "#b9afa3",
+      roughness: 0.92,
+      metalness: 0.06,
+      emissive: selected ? "#8a4b00" : "#101010",
+      emissiveIntensity: selected ? 0.32 : 0.08,
+    }),
+  );
+  rock.userData = {
+    id: object.id,
+    orbitLayout: layout,
+    selected,
+    velocityKps: object.velocity_kps,
+  };
+
+  const marker = new THREE.Mesh(
+    new THREE.RingGeometry(0.22, 0.28, 48),
+    new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: selected ? 0.95 : 0.28,
+      side: THREE.DoubleSide,
+    }),
+  );
+  marker.userData = { follows: rock, selected };
+
+  const label = createLabelSprite(object.name, color);
+  label.userData = { follows: rock, label: true };
+
+  return [orbit, rock, marker, label];
 }
 
 function AsteroidScene({ objects, selectedId, progress, playing, showGrid, showTrails, showLabels, showHud }) {
@@ -564,6 +606,15 @@ function AsteroidScene({ objects, selectedId, progress, playing, showGrid, showT
     camera.position.set(0, 6.2, 9.8);
     camera.lookAt(0, 0, 0);
 
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.enablePan = false;
+    controls.minDistance = 4.2;
+    controls.maxDistance = 20;
+    controls.target.set(0, 0, 0);
+    controls.update();
+
     const group = new THREE.Group();
     scene.add(group);
 
@@ -578,10 +629,7 @@ function AsteroidScene({ objects, selectedId, progress, playing, showGrid, showT
       starPositions[i + 2] = radius * Math.sin(phi) * Math.sin(theta);
     }
     starsGeometry.setAttribute("position", new THREE.BufferAttribute(starPositions, 3));
-    const stars = new THREE.Points(
-      starsGeometry,
-      new THREE.PointsMaterial({ color: "#d9f4ff", size: 0.035, transparent: true, opacity: 0.78 }),
-    );
+    const stars = new THREE.Points(starsGeometry, new THREE.PointsMaterial({ color: "#d9f4ff", size: 0.035, transparent: true, opacity: 0.78 }));
     scene.add(stars);
 
     const ambient = new THREE.AmbientLight("#6688a8", 0.28);
@@ -596,10 +644,7 @@ function AsteroidScene({ objects, selectedId, progress, playing, showGrid, showT
     const sunDirection = sun.position.clone().normalize();
     const earthTextures = loadRealisticEarthTextures(renderer);
     const sphereGeometry = new THREE.SphereGeometry(1.75, 160, 160);
-    const earth = new THREE.Mesh(
-      sphereGeometry,
-      createEarthMaterial(earthTextures, sunDirection),
-    );
+    const earth = new THREE.Mesh(sphereGeometry, createEarthMaterial(earthTextures, sunDirection));
     group.add(earth);
 
     const atmosphere = new THREE.Mesh(sphereGeometry, createAtmosphereMaterial(sunDirection));
@@ -617,7 +662,7 @@ function AsteroidScene({ objects, selectedId, progress, playing, showGrid, showT
 
     const asteroidGroup = new THREE.Group();
     group.add(asteroidGroup);
-    sceneRef.current = { asteroidGroup, grid, group, earth, atmosphere, stars, renderer, camera, scene };
+    sceneRef.current = { asteroidGroup, grid, group, earth, atmosphere, stars, renderer, camera, controls, scene };
 
     let frame = 0;
 
@@ -625,49 +670,7 @@ function AsteroidScene({ objects, selectedId, progress, playing, showGrid, showT
       asteroidGroup.clear();
       const current = stateRef.current;
       current.objects.forEach((object, index) => {
-        const color = ORBIT_COLORS[object.orbit] || "#ffffff";
-        const radiusX = 2.55 + object.miss_lunar / 34 + index * 0.22;
-        const radiusY = 1.48 + Math.min(object.period_days || 420, 780) / 210;
-        const orbit = buildEllipse(radiusX, radiusY, object.inclination, color, object.id === current.selectedId);
-        orbit.userData = { id: object.id, kind: "orbit" };
-        asteroidGroup.add(orbit);
-
-        const rock = new THREE.Mesh(
-          new THREE.IcosahedronGeometry(0.12 + Math.min(object.diameter_m[1] || 55, 120) / 650, 2),
-          new THREE.MeshStandardMaterial({
-            color: object.id === current.selectedId ? "#ffd06a" : "#b9afa3",
-            roughness: 0.92,
-            metalness: 0.06,
-            emissive: object.id === current.selectedId ? "#8a4b00" : "#101010",
-            emissiveIntensity: object.id === current.selectedId ? 0.32 : 0.08,
-          }),
-        );
-        rock.userData = {
-          id: object.id,
-          radiusX,
-          radiusY,
-          inclination: THREE.MathUtils.degToRad(object.inclination),
-          phase: index * 1.9 + object.velocity_kps / 6,
-          periodDays: Math.max(object.period_days || 365, 1),
-          selected: object.id === current.selectedId,
-        };
-        asteroidGroup.add(rock);
-
-        const marker = new THREE.Mesh(
-          new THREE.RingGeometry(0.22, 0.28, 48),
-          new THREE.MeshBasicMaterial({
-            color,
-            transparent: true,
-            opacity: object.id === current.selectedId ? 0.95 : 0.28,
-            side: THREE.DoubleSide,
-          }),
-        );
-        marker.userData = { follows: rock, selected: object.id === current.selectedId };
-        asteroidGroup.add(marker);
-
-        const label = createLabelSprite(object.name, color);
-        label.userData = { follows: rock, label: true };
-        asteroidGroup.add(label);
+        asteroidGroup.add(...createAsteroidVisual(object, index, current.selectedId));
       });
     }
 
@@ -679,20 +682,17 @@ function AsteroidScene({ objects, selectedId, progress, playing, showGrid, showT
       if (!sceneRef.current) return;
       const time = performance.now() * 0.001;
       const simulatedDays = current.progress * SIMULATED_WINDOW_DAYS;
-      group.rotation.y = Math.sin(time * 0.08) * 0.12;
-      earth.rotation.y = simulatedDays * Math.PI * 2;
+      group.rotation.y = Math.sin(time * 0.08) * 0.04;
+      earth.rotation.y = (simulatedDays / SIDEREAL_DAY_IN_SOLAR_DAYS) * Math.PI * 2;
       atmosphere.rotation.y = earth.rotation.y;
       stars.rotation.y += 0.00015;
+      controls.update();
       grid.visible = current.showGrid;
       earthOrbit.visible = current.showTrails;
 
       asteroidGroup.children.forEach((child) => {
-        if (child.userData.radiusX) {
-          const t = child.userData.phase + (simulatedDays / child.userData.periodDays) * Math.PI * 2;
-          const x = Math.cos(t) * child.userData.radiusX;
-          const z = Math.sin(t) * child.userData.radiusY;
-          const y = Math.sin(child.userData.inclination) * z;
-          child.position.set(x, y, z);
+        if (child.userData.orbitLayout) {
+          child.position.copy(getOrbitPosition(child.userData.orbitLayout, simulatedDays));
           child.rotation.x = simulatedDays * Math.PI * 2 * 0.3;
           child.rotation.y = simulatedDays * Math.PI * 2 * 0.5;
         }
@@ -732,6 +732,7 @@ function AsteroidScene({ objects, selectedId, progress, playing, showGrid, showT
       sphereGeometry.dispose();
       earth.material.dispose();
       atmosphere.material.dispose();
+      controls.dispose();
       renderer.dispose();
       earthTextures.dayTexture.dispose();
       earthTextures.nightTexture.dispose();
@@ -746,46 +747,7 @@ function AsteroidScene({ objects, selectedId, progress, playing, showGrid, showT
     sceneState.asteroidGroup.clear();
     const current = { objects, selectedId, progress, playing, showGrid, showTrails, showLabels, showHud };
     objects.forEach((object, index) => {
-      const color = ORBIT_COLORS[object.orbit] || "#ffffff";
-      const radiusX = 2.55 + object.miss_lunar / 34 + index * 0.22;
-      const radiusY = 1.48 + Math.min(object.period_days || 420, 780) / 210;
-      const orbit = buildEllipse(radiusX, radiusY, object.inclination, color, object.id === current.selectedId);
-      orbit.userData = { id: object.id, kind: "orbit" };
-      sceneState.asteroidGroup.add(orbit);
-      const rock = new THREE.Mesh(
-        new THREE.IcosahedronGeometry(0.12 + Math.min(object.diameter_m[1] || 55, 120) / 650, 2),
-        new THREE.MeshStandardMaterial({
-          color: object.id === current.selectedId ? "#ffd06a" : "#b9afa3",
-          roughness: 0.92,
-          metalness: 0.06,
-          emissive: object.id === current.selectedId ? "#8a4b00" : "#101010",
-          emissiveIntensity: object.id === current.selectedId ? 0.32 : 0.08,
-        }),
-      );
-      rock.userData = {
-        id: object.id,
-        radiusX,
-        radiusY,
-        inclination: THREE.MathUtils.degToRad(object.inclination),
-        phase: index * 1.9 + object.velocity_kps / 6,
-        periodDays: Math.max(object.period_days || 365, 1),
-        selected: object.id === current.selectedId,
-      };
-      sceneState.asteroidGroup.add(rock);
-      const marker = new THREE.Mesh(
-        new THREE.RingGeometry(0.22, 0.28, 48),
-        new THREE.MeshBasicMaterial({
-          color,
-          transparent: true,
-          opacity: object.id === current.selectedId ? 0.95 : 0.28,
-          side: THREE.DoubleSide,
-        }),
-      );
-      marker.userData = { follows: rock, selected: object.id === current.selectedId };
-      sceneState.asteroidGroup.add(marker);
-      const label = createLabelSprite(object.name, color);
-      label.userData = { follows: rock, label: true };
-      sceneState.asteroidGroup.add(label);
+      sceneState.asteroidGroup.add(...createAsteroidVisual(object, index, current.selectedId));
     });
   }, [objects, selectedId]);
 
@@ -815,7 +777,9 @@ function StatusHeader({ date, count, source, status }) {
       </div>
       <div className="top-stat hide-medium">
         <Satellite size={15} />
-        <span>{date} · {count} objects</span>
+        <span>
+          {date} · {count} objects
+        </span>
       </div>
       <div className="top-time">{now.toISOString().slice(0, 16).replace("T", " ")} UTC</div>
     </header>
@@ -839,28 +803,33 @@ function ObjectList({ objects, selectedId, onSelect }) {
         {objects.map((object) => {
           const danger = scoreObject(object);
           return (
-            <button
-              className={`object-row ${object.id === selectedId ? "selected" : ""}`}
-              key={object.id}
-              type="button"
-              onClick={() => onSelect(object.id)}
-            >
+            <button className={`object-row ${object.id === selectedId ? "selected" : ""}`} key={object.id} type="button" onClick={() => onSelect(object.id)}>
               <span className="rock-chip" style={{ "--accent": ORBIT_COLORS[object.orbit] || "#ffffff" }} />
               <span className="object-name">
                 {object.name}
-                <small>{dangerLabel(danger)} · {formatNumber(object.velocity_kps, 1)} km/s</small>
+                <small>
+                  {dangerLabel(danger)} · {formatNumber(object.velocity_kps, 1)} km/s
+                </small>
               </span>
               <span className={`danger-score ${danger >= 55 ? "elevated" : ""}`}>{danger}</span>
               <span>{formatNumber(object.miss_lunar, 1)}</span>
-              <span>{Math.round(object.diameter_m[0])}-{Math.round(object.diameter_m[1])}</span>
+              <span>
+                {Math.round(object.diameter_m[0])}-{Math.round(object.diameter_m[1])}
+              </span>
             </button>
           );
         })}
       </div>
       <div className="legend">
-        <div><span className="line selected-line" /> Higher score = more danger</div>
-        <div><span className="line earth-line" /> Earth orbit</div>
-        <div><span className="line orbit-line" /> Asteroid orbit</div>
+        <div>
+          <span className="line selected-line" /> Higher score = more danger
+        </div>
+        <div>
+          <span className="line earth-line" /> Earth orbit
+        </div>
+        <div>
+          <span className="line orbit-line" /> Asteroid orbit
+        </div>
       </div>
     </section>
   );
@@ -871,7 +840,10 @@ function RiskGauge({ value, label, max = 100, suffix = "" }) {
   return (
     <div className="gauge-card">
       <div className="gauge-ring" style={{ "--fill": `${clamped * 270}deg` }}>
-        <span>{formatNumber(value, value < 10 ? 1 : 0)}{suffix}</span>
+        <span>
+          {formatNumber(value, value < 10 ? 1 : 0)}
+          {suffix}
+        </span>
       </div>
       <small>{label}</small>
     </div>
@@ -880,10 +852,25 @@ function RiskGauge({ value, label, max = 100, suffix = "" }) {
 
 function ApproachChart({ lookup, selected }) {
   const points = selected.id === lookup.id ? lookup.nearest : [];
-  const fallbackPoints = [
-    { date: selected.time?.slice(0, 11) || "Today", miss_lunar: selected.miss_lunar, velocity_kps: selected.velocity_kps, body: "Earth" },
-  ];
-  const chartPoints = points.length ? points : fallbackPoints;
+  if (!points.length) {
+    return (
+      <div className="current-pass-card">
+        <div>
+          <span>Approach time</span>
+          <strong>{selected.time || "No approach time"}</strong>
+        </div>
+        <div>
+          <span>Miss distance</span>
+          <strong>{formatNumber(selected.miss_lunar, 1)} LD</strong>
+        </div>
+        <div>
+          <span>Velocity</span>
+          <strong>{formatNumber(selected.velocity_kps, 1)} km/s</strong>
+        </div>
+      </div>
+    );
+  }
+  const chartPoints = points;
   const max = Math.max(...chartPoints.map((point) => point.miss_lunar), 1);
   return (
     <div className="approach-chart">
@@ -917,7 +904,7 @@ function Inspector({ selected, lookup }) {
         </div>
         <div className={`risk-box ${riskScore > 60 ? "hot" : ""}`}>
           <strong>{riskScore}</strong>
-          <span>Attention</span>
+          <span>Risk</span>
         </div>
       </div>
       <div className="metric-strip">
@@ -942,10 +929,14 @@ function Inspector({ selected, lookup }) {
         <RiskGauge value={selected.velocity_kps} max={25} label="Relative velocity" />
       </div>
       <div className="details-grid">
-        <span>Orbit class</span><strong>{isLookup ? lookup.orbit_class?.orbit_class_type : selected.orbit}</strong>
-        <span>Eccentricity</span><strong>{formatNumber(selected.eccentricity, 3)}</strong>
-        <span>Uncertainty</span><strong>{selected.uncertainty}</strong>
-        <span>Period</span><strong>{formatNumber(selected.period_days, 1)} days</strong>
+        <span>Orbit class</span>
+        <strong>{isLookup ? lookup.orbit_class?.orbit_class_type : selected.orbit}</strong>
+        <span>Eccentricity</span>
+        <strong>{formatNumber(selected.eccentricity, 3)}</strong>
+        <span>Uncertainty</span>
+        <strong>{selected.uncertainty}</strong>
+        <span>Period</span>
+        <strong>{formatNumber(selected.period_days, 1)} days</strong>
       </div>
       <div className="history-block">
         <div className="history-title">
@@ -957,7 +948,9 @@ function Inspector({ selected, lookup }) {
       {isLookup && (
         <div className="lookup-note">
           <span>Observation arc</span>
-          <strong>{lookup.orbit.first_observation_date} to {lookup.orbit.last_observation_date}</strong>
+          <strong>
+            {lookup.orbit.first_observation_date} to {lookup.orbit.last_observation_date}
+          </strong>
         </div>
       )}
     </aside>
@@ -968,24 +961,25 @@ function TimelineControls({ progress, setProgress, playing, setPlaying, speed, s
   return (
     <section className="panel controls">
       <div className="control-buttons">
-        <button type="button" onClick={() => setProgress(0)} aria-label="Jump to start"><SkipBack size={18} /></button>
-        <button type="button" onClick={() => setProgress((value) => Math.max(0, value - 0.08))} aria-label="Rewind"><Rewind size={18} /></button>
+        <button type="button" onClick={() => setProgress(0)} aria-label="Jump to start">
+          <SkipBack size={18} />
+        </button>
+        <button type="button" onClick={() => setProgress((value) => Math.max(0, value - 0.08))} aria-label="Rewind">
+          <Rewind size={18} />
+        </button>
         <button className="primary-control" type="button" onClick={() => setPlaying((value) => !value)} aria-label={playing ? "Pause" : "Play"}>
           {playing ? <Pause size={19} /> : <Play size={19} />}
         </button>
-        <button type="button" onClick={() => setProgress((value) => Math.min(1, value + 0.08))} aria-label="Fast forward"><FastForward size={18} /></button>
-        <button type="button" onClick={() => setProgress(1)} aria-label="Jump to end"><SkipForward size={18} /></button>
+        <button type="button" onClick={() => setProgress((value) => Math.min(1, value + 0.08))} aria-label="Fast forward">
+          <FastForward size={18} />
+        </button>
+        <button type="button" onClick={() => setProgress(1)} aria-label="Jump to end">
+          <SkipForward size={18} />
+        </button>
       </div>
       <div className="timeline">
         <label htmlFor="time-scrub">Timeline scrubber</label>
-        <input
-          id="time-scrub"
-          type="range"
-          min="0"
-          max="100"
-          value={Math.round(progress * 100)}
-          onChange={(event) => setProgress(Number(event.target.value) / 100)}
-        />
+        <input id="time-scrub" type="range" min="0" max="100" value={Math.round(progress * 100)} onChange={(event) => setProgress(Number(event.target.value) / 100)} />
         <div className="ticks">
           <span>T-12h</span>
           <strong>Approach window</strong>
@@ -1017,13 +1011,7 @@ function DisplayOptions({ showGrid, setShowGrid, showTrails, setShowTrails, show
       {options.map((option) => {
         const Icon = option.icon;
         return (
-          <button
-            key={option.label}
-            className={option.active ? "active" : ""}
-            type="button"
-            onClick={() => option.set((value) => !value)}
-            aria-pressed={option.active}
-          >
+          <button key={option.label} className={option.active ? "active" : ""} type="button" onClick={() => option.set((value) => !value)} aria-pressed={option.active}>
             <Icon size={18} />
             <span>{option.label}</span>
           </button>
@@ -1044,10 +1032,7 @@ function App() {
   const [showLabels, setShowLabels] = React.useState(true);
   const [showHud, setShowHud] = React.useState(true);
 
-  const objects = React.useMemo(
-    () => [...(feed.objects.length ? feed.objects : FALLBACK_FEED.objects)].sort((a, b) => scoreObject(b) - scoreObject(a)),
-    [feed.objects],
-  );
+  const objects = React.useMemo(() => [...(feed.objects.length ? feed.objects : FALLBACK_FEED.objects)].sort((a, b) => scoreObject(b) - scoreObject(a)), [feed.objects]);
   const selected = objects.find((object) => object.id === selectedId) || objects[0];
 
   React.useEffect(() => {
@@ -1070,16 +1055,7 @@ function App() {
       <div className="workspace">
         <ObjectList objects={objects} selectedId={selected.id} onSelect={setSelectedId} />
         <section className={`scene-panel ${showGrid ? "" : "grid-off"} ${showHud ? "" : "hud-off"}`}>
-          <AsteroidScene
-            objects={objects}
-            selectedId={selected.id}
-            progress={progress}
-            playing={playing}
-            showGrid={showGrid}
-            showTrails={showTrails}
-            showLabels={showLabels}
-            showHud={showHud}
-          />
+          <AsteroidScene objects={objects} selectedId={selected.id} progress={progress} playing={playing} showGrid={showGrid} showTrails={showTrails} showLabels={showLabels} showHud={showHud} />
           {showHud && (
             <>
               <div className="scene-overlay top-left">1 LD = 384,399 km</div>
@@ -1090,14 +1066,7 @@ function App() {
         <Inspector selected={selected} lookup={lookup} />
       </div>
       <footer className="bottom-deck">
-        <TimelineControls
-          progress={progress}
-          setProgress={setProgress}
-          playing={playing}
-          setPlaying={setPlaying}
-          speed={speed}
-          setSpeed={setSpeed}
-        />
+        <TimelineControls progress={progress} setProgress={setProgress} playing={playing} setPlaying={setPlaying} speed={speed} setSpeed={setSpeed} />
         <DisplayOptions
           showGrid={showGrid}
           setShowGrid={setShowGrid}
