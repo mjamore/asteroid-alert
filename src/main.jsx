@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { Activity, Crosshair, Database, FastForward, Gauge, Grid3X3, List, Pause, Play, Radar, Rewind, Satellite, SkipBack, SkipForward, Target } from "lucide-react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./components/ui/tooltip";
 import "./styles.css";
 
 const NEO_DATA_URL = "/api/neo-data";
@@ -178,8 +179,19 @@ const SIMULATED_WINDOW_DAYS = 1;
 const BASELINE_WINDOW_SECONDS = 120;
 const SIDEREAL_DAY_IN_SOLAR_DAYS = 0.99726968;
 const LUNAR_DISTANCE_KM = 384399;
+const LUNAR_DISTANCE_MI_DISPLAY = 240000;
+const KM_TO_MILES = 0.621371;
+const METER_TO_FEET = 3.28084;
+const AU_TO_MILES = 92955807;
 const ORBIT_DISTANCE_SCALE_LD_PER_UNIT = 34;
 const ORBIT_SEGMENTS = 192;
+const ORBIT_LABELS = {
+  APO: { label: "Apollo", description: "Earth-crossing asteroid orbit with a wider path around the Sun than Earth." },
+  ATE: { label: "Aten", description: "Near-Earth asteroid orbit that stays mostly inside Earth's path around the Sun." },
+  AMO: { label: "Amor", description: "Near-Earth asteroid orbit that comes near Earth but usually does not cross Earth's path." },
+  IEO: { label: "Inside Earth", description: "Asteroid orbit that stays entirely inside Earth's path around the Sun." },
+  NEO: { label: "Near-Earth", description: "Object with an orbit that brings it near Earth's neighborhood." },
+};
 
 const parseNum = (value, fallback = 0) => {
   const parsed = Number.parseFloat(value);
@@ -263,6 +275,49 @@ function formatCompact(value) {
     notation: "compact",
     maximumFractionDigits: 1,
   }).format(Number(value));
+}
+
+function formatMissMiles(lunarDistance) {
+  if (!Number.isFinite(Number(lunarDistance))) return "n/a";
+  return `${formatCompact(lunarDistance * LUNAR_DISTANCE_MI_DISPLAY)} mi`;
+}
+
+function formatSpeedMps(kilometersPerSecond) {
+  if (!Number.isFinite(Number(kilometersPerSecond))) return "n/a";
+  return `${formatNumber(kilometersPerSecond * KM_TO_MILES, 1)} mi/s`;
+}
+
+function formatDiameterFeet(meters) {
+  if (!Number.isFinite(Number(meters))) return "n/a";
+  return `${formatCompact(meters * METER_TO_FEET)} ft`;
+}
+
+function formatMoidMiles(au) {
+  if (!Number.isFinite(Number(au))) return "n/a";
+  return `${formatCompact(au * AU_TO_MILES)} mi`;
+}
+
+function formatApproachDate(approach) {
+  return approach?.full || approach?.time || approach?.date || "No approach time";
+}
+
+function orbitLabel(orbit) {
+  return ORBIT_LABELS[orbit]?.label || orbit || "Near-Earth";
+}
+
+function orbitDescription(orbit) {
+  return ORBIT_LABELS[orbit]?.description || "NASA orbit class for this near-Earth object.";
+}
+
+function InfoTooltip({ children, content }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent>
+        <p>{content}</p>
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
 function scoreObject(object) {
@@ -764,7 +819,7 @@ function StatusHeader({ date, count, source, status }) {
         </div>
         <div>
           <h1>Asteroid Alert</h1>
-          <span>Live NEO Monitoring</span>
+          <span>Live Near-Earth Object Monitoring</span>
         </div>
       </div>
       <div className="top-stat">
@@ -796,8 +851,8 @@ function ObjectList({ objects, selectedId, onSelect }) {
       <div className="table-head">
         <span>Name</span>
         <span>Risk</span>
-        <span>Miss LD</span>
-        <span>Diam m</span>
+        <span>Miss mi</span>
+        <span>Diam ft</span>
       </div>
       <div className="object-rows">
         {objects.map((object) => {
@@ -808,14 +863,12 @@ function ObjectList({ objects, selectedId, onSelect }) {
               <span className="object-name">
                 {object.name}
                 <small>
-                  {dangerLabel(danger)} · {formatNumber(object.velocity_kps, 1)} km/s
+                  {dangerLabel(danger)} · {formatSpeedMps(object.velocity_kps)}
                 </small>
               </span>
               <span className={`danger-score ${danger >= 55 ? "elevated" : ""}`}>{danger}</span>
-              <span>{formatNumber(object.miss_lunar, 1)}</span>
-              <span>
-                {Math.round(object.diameter_m[0])}-{Math.round(object.diameter_m[1])}
-              </span>
+              <span>{formatMissMiles(object.miss_lunar)}</span>
+              <span>{formatDiameterFeet(object.diameter_m[1])}</span>
             </button>
           );
         })}
@@ -861,11 +914,11 @@ function ApproachChart({ lookup, selected }) {
         </div>
         <div>
           <span>Miss distance</span>
-          <strong>{formatNumber(selected.miss_lunar, 1)} LD</strong>
+          <strong>{formatMissMiles(selected.miss_lunar)}</strong>
         </div>
         <div>
           <span>Velocity</span>
-          <strong>{formatNumber(selected.velocity_kps, 1)} km/s</strong>
+          <strong>{formatSpeedMps(selected.velocity_kps)}</strong>
         </div>
       </div>
     );
@@ -891,11 +944,16 @@ function Inspector({ selected, lookup }) {
   const riskScore = scoreObject(selected);
   const isLookup = selected.id === lookup.id;
   const meanDiameter = (selected.diameter_m[0] + selected.diameter_m[1]) / 2;
+  const closestApproach = isLookup && lookup.nearest.length ? lookup.nearest[0] : selected;
+  const selectedOrbitLabel = isLookup ? orbitLabel(lookup.orbit_class?.orbit_class_type) : orbitLabel(selected.orbit);
+  const selectedOrbitDescription = isLookup ? lookup.orbit_class?.orbit_class_description || orbitDescription(selected.orbit) : orbitDescription(selected.orbit);
   return (
     <aside className="panel inspector">
       <div className="panel-title">
         <span>Selected Object</span>
-        <strong>{selected.orbit}</strong>
+        <InfoTooltip content={selectedOrbitDescription}>
+          <strong tabIndex={0}>{selectedOrbitLabel}</strong>
+        </InfoTooltip>
       </div>
       <div className="selected-heading">
         <div>
@@ -910,27 +968,35 @@ function Inspector({ selected, lookup }) {
       <div className="metric-strip">
         <div>
           <Target size={20} />
-          <span>{formatNumber(selected.miss_lunar, 1)} LD</span>
+          <span>{formatMissMiles(selected.miss_lunar)}</span>
           <small>Miss distance</small>
         </div>
         <div>
           <Gauge size={20} />
-          <span>{formatNumber(selected.velocity_kps, 1)} km/s</span>
+          <span>{formatSpeedMps(selected.velocity_kps)}</span>
           <small>Velocity</small>
         </div>
-        <div>
+        <InfoTooltip content="MOID is the closest possible gap between Earth's orbit and this object's orbit, not necessarily today's flyby distance.">
+          <div>
           <Crosshair size={20} />
-          <span>{formatNumber(selected.moid, 3)} AU</span>
-          <small>MOID</small>
-        </div>
+          <span>{formatMoidMiles(selected.moid)}</span>
+          <small>Orbit gap</small>
+          </div>
+        </InfoTooltip>
       </div>
       <div className="gauges">
-        <RiskGauge value={meanDiameter} max={120} label="Est. diameter" suffix="m" />
-        <RiskGauge value={selected.velocity_kps} max={25} label="Relative velocity" />
+        <RiskGauge value={meanDiameter * METER_TO_FEET} max={400} label="Est. diameter" suffix="ft" />
+        <RiskGauge value={selected.velocity_kps * KM_TO_MILES} max={16} label="Relative velocity" suffix=" mi/s" />
       </div>
       <div className="details-grid">
+        <span>Closest to Earth</span>
+        <strong>{formatApproachDate(closestApproach)}</strong>
+        <span>Closest distance</span>
+        <strong>{formatMissMiles(closestApproach.miss_lunar)}</strong>
         <span>Orbit class</span>
-        <strong>{isLookup ? lookup.orbit_class?.orbit_class_type : selected.orbit}</strong>
+        <InfoTooltip content={selectedOrbitDescription}>
+          <strong tabIndex={0}>{selectedOrbitLabel}</strong>
+        </InfoTooltip>
         <span>Eccentricity</span>
         <strong>{formatNumber(selected.eccentricity, 3)}</strong>
         <span>Uncertainty</span>
@@ -1050,7 +1116,8 @@ function App() {
   }, [objects, selectedId]);
 
   return (
-    <main className="app-shell">
+    <TooltipProvider>
+      <main className="app-shell">
       <StatusHeader date={feed.date} count={feed.count} source={source} status={status} />
       <div className="workspace">
         <ObjectList objects={objects} selectedId={selected.id} onSelect={setSelectedId} />
@@ -1058,7 +1125,7 @@ function App() {
           <AsteroidScene objects={objects} selectedId={selected.id} progress={progress} playing={playing} showGrid={showGrid} showTrails={showTrails} showLabels={showLabels} showHud={showHud} />
           {showHud && (
             <>
-              <div className="scene-overlay top-left">1 LD = 384,399 km</div>
+              <div className="scene-overlay top-left">Moon distance ~= 240,000 mi</div>
               <div className="scene-overlay bottom-right">Selected trajectory: {selected.name}</div>
             </>
           )}
@@ -1078,7 +1145,8 @@ function App() {
           setShowHud={setShowHud}
         />
       </footer>
-    </main>
+      </main>
+    </TooltipProvider>
   );
 }
 
