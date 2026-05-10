@@ -179,16 +179,16 @@ const SIMULATED_WINDOW_DAYS = 1;
 const BASELINE_WINDOW_SECONDS = 120;
 const SIDEREAL_DAY_IN_SOLAR_DAYS = 0.99726968;
 const LUNAR_DISTANCE_KM = 384399;
-const LUNAR_DISTANCE_MI_DISPLAY = 240000;
 const KM_TO_MILES = 0.621371;
+const LUNAR_DISTANCE_MI = LUNAR_DISTANCE_KM * KM_TO_MILES;
 const METER_TO_FEET = 3.28084;
 const AU_TO_MILES = 92955807;
-const ORBIT_DISTANCE_SCALE_LD_PER_UNIT = 34;
 const ORBIT_SEGMENTS = 192;
 const EARTH_SCENE_RADIUS = 1.75;
 const MOON_RADIUS_TO_EARTH = 0.2727;
 const MOON_SCENE_RADIUS = EARTH_SCENE_RADIUS * MOON_RADIUS_TO_EARTH;
 const MOON_SCENE_DISTANCE = 8.4;
+const APPROACH_DISTANCE_COMPRESS = 1.55;
 const MOON_TEXTURE_URL = "https://s3-us-west-2.amazonaws.com/s.cdpn.io/17271/lroc_color_poles_1k.jpg";
 const MOON_DISPLACEMENT_URL = "https://s3-us-west-2.amazonaws.com/s.cdpn.io/17271/ldem_3_8bit.jpg";
 const ORBIT_LABELS = {
@@ -221,6 +221,7 @@ function normalizeFeed(payload) {
       velocity_kps: parseNum(approach.relative_velocity?.kilometers_per_second),
       miss_lunar: parseNum(approach.miss_distance?.lunar),
       miss_km: parseNum(approach.miss_distance?.kilometers),
+      miss_miles: parseNum(approach.miss_distance?.miles, Number.NaN),
       orbit: orbit.orbit_class?.orbit_class_type || "NEO",
       uncertainty: orbit.orbit_uncertainty ?? "n/a",
       moid: parseNum(orbit.minimum_orbit_intersection),
@@ -240,6 +241,7 @@ function normalizeLookup(payload) {
     velocity_kps: parseNum(approach.relative_velocity?.kilometers_per_second),
     miss_lunar: parseNum(approach.miss_distance?.lunar),
     miss_km: parseNum(approach.miss_distance?.kilometers),
+    miss_miles: parseNum(approach.miss_distance?.miles, Number.NaN),
   }));
   return {
     id: payload.id,
@@ -283,9 +285,16 @@ function formatCompact(value) {
   }).format(Number(value));
 }
 
-function formatMissMiles(lunarDistance) {
-  if (!Number.isFinite(Number(lunarDistance))) return "n/a";
-  return `${formatCompact(lunarDistance * LUNAR_DISTANCE_MI_DISPLAY)} mi`;
+function formatMissMiles(value, kilometers) {
+  const objectValue = typeof value === "object" && value !== null ? value : null;
+  const directMiles = objectValue ? Number.parseFloat(objectValue.miss_miles) : Number.NaN;
+  const km = objectValue ? Number.parseFloat(objectValue.miss_km) : Number.parseFloat(kilometers);
+  const lunarDistance = objectValue ? Number.parseFloat(objectValue.miss_lunar) : Number.parseFloat(value);
+  let miles = directMiles;
+  if (!Number.isFinite(miles) && Number.isFinite(km)) miles = km * KM_TO_MILES;
+  if (!Number.isFinite(miles) && Number.isFinite(lunarDistance)) miles = lunarDistance * LUNAR_DISTANCE_MI;
+  if (!Number.isFinite(miles)) return "n/a";
+  return `${formatCompact(miles)} mi`;
 }
 
 function formatSpeedMps(kilometersPerSecond) {
@@ -436,8 +445,8 @@ function createMoonVisual(textures) {
   });
   const moon = new THREE.Mesh(geometry, material);
   moon.position.set(MOON_SCENE_DISTANCE, 0, 0);
-  moon.rotation.x = Math.PI * 0.02;
-  moon.rotation.y = Math.PI * 1.54;
+  moon.lookAt(0, 0, 0);
+  moon.rotateZ(Math.PI * 0.02);
   return moon;
 }
 
@@ -610,40 +619,60 @@ function buildEllipse(radiusX, radiusY, inclination, color, dashed = false) {
   return line;
 }
 
-function approximateEllipseCircumference(radiusX, radiusY) {
-  const sum = radiusX + radiusY;
-  if (sum === 0) return 1;
-  const h = ((radiusX - radiusY) / sum) ** 2;
-  return Math.PI * sum * (1 + (3 * h) / (10 + Math.sqrt(4 - 3 * h)));
+function scaleLunarDistanceForScene(lunarDistance, maxLunarDistance) {
+  const distance = Number.parseFloat(lunarDistance);
+  if (!Number.isFinite(distance) || distance <= 0) return MOON_SCENE_DISTANCE;
+  if (distance <= 1) return Math.max(EARTH_SCENE_RADIUS + 0.8, distance * MOON_SCENE_DISTANCE);
+  const maxDistance = Math.max(Number.parseFloat(maxLunarDistance) || distance, distance, 2);
+  const compressed = Math.log10(distance) / Math.log10(maxDistance);
+  return MOON_SCENE_DISTANCE * (1 + compressed * APPROACH_DISTANCE_COMPRESS);
 }
 
-function getOrbitLayout(object, index) {
-  const radiusX = 2.55 + object.miss_lunar / 34 + index * 0.22;
-  const radiusY = 1.48 + Math.min(object.period_days || 420, 780) / 210;
-  const orbitLengthLd = approximateEllipseCircumference(radiusX, radiusY) * ORBIT_DISTANCE_SCALE_LD_PER_UNIT;
-  const travelLdPerDay = (object.velocity_kps * 86400) / LUNAR_DISTANCE_KM;
+function getApproachLayout(object, index, maxLunarDistance) {
+  const closestDistance = scaleLunarDistanceForScene(object.miss_lunar, maxLunarDistance);
   return {
-    radiusX,
-    radiusY,
+    closestDistance,
+    halfLength: Math.max(24, Math.min(46, closestDistance * 1.22)),
+    bend: Math.min(8.5, closestDistance * 0.18),
     inclinationDegrees: object.inclination,
     inclinationRadians: THREE.MathUtils.degToRad(object.inclination),
-    phase: index * 1.9 + object.velocity_kps / 6,
-    periodDays: Math.max(object.period_days || 365, 1),
-    angularRateRadiansPerDay: orbitLengthLd > 0 ? (travelLdPerDay / orbitLengthLd) * Math.PI * 2 : 0,
+    rotationYRadians: index * 2.35 + object.velocity_kps / 18,
+    phaseOffset: (index * 0.17) % 1,
   };
 }
 
-function getOrbitPosition(layout, simulatedDays) {
-  const angle = layout.phase + simulatedDays * layout.angularRateRadiansPerDay;
-  return new THREE.Vector3(Math.cos(angle) * layout.radiusX, 0, Math.sin(angle) * layout.radiusY).applyAxisAngle(new THREE.Vector3(1, 0, 0), layout.inclinationRadians);
+function getApproachPoint(layout, t) {
+  return new THREE.Vector3(t * layout.halfLength, 0, layout.closestDistance + t * t * layout.bend)
+    .applyAxisAngle(new THREE.Vector3(1, 0, 0), layout.inclinationRadians)
+    .applyAxisAngle(new THREE.Vector3(0, 1, 0), layout.rotationYRadians);
 }
 
-function createAsteroidVisual(object, index, selectedId) {
+function buildApproachPath(layout, color, selected) {
+  const points = [];
+  for (let i = 0; i <= ORBIT_SEGMENTS; i += 1) {
+    const t = i / ORBIT_SEGMENTS * 2 - 1;
+    points.push(getApproachPoint(layout, t));
+  }
+  const geometry = new THREE.BufferGeometry().setFromPoints(points);
+  const material = selected
+    ? new THREE.LineDashedMaterial({ color, dashSize: 0.45, gapSize: 0.16, transparent: true, opacity: 0.92 })
+    : new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.58 });
+  const line = new THREE.Line(geometry, material);
+  if (selected) line.computeLineDistances();
+  return line;
+}
+
+function getApproachPosition(layout, progress) {
+  const wrapped = (progress + layout.phaseOffset) % 1;
+  return getApproachPoint(layout, wrapped * 2 - 1);
+}
+
+function createAsteroidVisual(object, index, selectedId, maxLunarDistance) {
   const selected = object.id === selectedId;
   const color = ORBIT_COLORS[object.orbit] || "#ffffff";
-  const layout = getOrbitLayout(object, index);
-  const orbit = buildEllipse(layout.radiusX, layout.radiusY, layout.inclinationDegrees, color, selected);
-  orbit.userData = { id: object.id, kind: "orbit" };
+  const layout = getApproachLayout(object, index, maxLunarDistance);
+  const path = buildApproachPath(layout, color, selected);
+  path.userData = { id: object.id, kind: "approach" };
 
   const rock = new THREE.Mesh(
     new THREE.IcosahedronGeometry(0.12 + Math.min(object.diameter_m[1] || 55, 120) / 650, 2),
@@ -657,7 +686,7 @@ function createAsteroidVisual(object, index, selectedId) {
   );
   rock.userData = {
     id: object.id,
-    orbitLayout: layout,
+    approachLayout: layout,
     selected,
     velocityKps: object.velocity_kps,
   };
@@ -676,7 +705,7 @@ function createAsteroidVisual(object, index, selectedId) {
   const label = createLabelSprite(object.name, color);
   label.userData = { follows: rock, label: true };
 
-  return [orbit, rock, marker, label];
+  return [path, rock, marker, label];
 }
 
 function AsteroidScene({ objects, selectedId, progress, playing, showGrid, showTrails, showLabels, showHud }) {
@@ -776,8 +805,9 @@ function AsteroidScene({ objects, selectedId, progress, playing, showGrid, showT
     function rebuildAsteroids() {
       asteroidGroup.clear();
       const current = stateRef.current;
+      const maxLunarDistance = Math.max(...current.objects.map((object) => object.miss_lunar || 0), 1);
       current.objects.forEach((object, index) => {
-        asteroidGroup.add(...createAsteroidVisual(object, index, current.selectedId));
+        asteroidGroup.add(...createAsteroidVisual(object, index, current.selectedId, maxLunarDistance));
       });
     }
 
@@ -792,7 +822,6 @@ function AsteroidScene({ objects, selectedId, progress, playing, showGrid, showT
       group.rotation.y = Math.sin(time * 0.08) * 0.04;
       earth.rotation.y = (simulatedDays / SIDEREAL_DAY_IN_SOLAR_DAYS) * Math.PI * 2;
       atmosphere.rotation.y = earth.rotation.y;
-      moon.rotation.y += 0.0012;
       stars.rotation.y += 0.00015;
       controls.update();
       grid.visible = current.showGrid;
@@ -800,8 +829,8 @@ function AsteroidScene({ objects, selectedId, progress, playing, showGrid, showT
       moonOrbit.visible = current.showTrails;
 
       asteroidGroup.children.forEach((child) => {
-        if (child.userData.orbitLayout) {
-          child.position.copy(getOrbitPosition(child.userData.orbitLayout, simulatedDays));
+        if (child.userData.approachLayout) {
+          child.position.copy(getApproachPosition(child.userData.approachLayout, current.progress));
           child.rotation.x = simulatedDays * Math.PI * 2 * 0.3;
           child.rotation.y = simulatedDays * Math.PI * 2 * 0.5;
         }
@@ -817,7 +846,7 @@ function AsteroidScene({ objects, selectedId, progress, playing, showGrid, showT
             child.scale.setScalar(scale);
           }
         }
-        if (child.userData.kind === "orbit") {
+        if (child.userData.kind === "approach") {
           child.visible = current.showTrails;
         }
       });
@@ -859,8 +888,9 @@ function AsteroidScene({ objects, selectedId, progress, playing, showGrid, showT
     if (!sceneState) return;
     sceneState.asteroidGroup.clear();
     const current = { objects, selectedId, progress, playing, showGrid, showTrails, showLabels, showHud };
+    const maxLunarDistance = Math.max(...objects.map((object) => object.miss_lunar || 0), 1);
     objects.forEach((object, index) => {
-      sceneState.asteroidGroup.add(...createAsteroidVisual(object, index, current.selectedId));
+      sceneState.asteroidGroup.add(...createAsteroidVisual(object, index, current.selectedId, maxLunarDistance));
     });
   }, [objects, selectedId]);
 
@@ -925,7 +955,7 @@ function ObjectList({ objects, selectedId, onSelect }) {
                 </small>
               </span>
               <span className={`danger-score ${danger >= 55 ? "elevated" : ""}`}>{danger}</span>
-              <span>{formatMissMiles(object.miss_lunar)}</span>
+              <span>{formatMissMiles(object)}</span>
               <span>{formatDiameterFeet(object.diameter_m[1])}</span>
             </button>
           );
@@ -936,10 +966,10 @@ function ObjectList({ objects, selectedId, onSelect }) {
           <span className="line selected-line" /> Higher score = more danger
         </div>
         <div>
-          <span className="line earth-line" /> Earth orbit
+          <span className="line earth-line" /> Earth reference
         </div>
         <div>
-          <span className="line orbit-line" /> Asteroid orbit
+          <span className="line orbit-line" /> Approach path
         </div>
       </div>
     </section>
@@ -972,7 +1002,7 @@ function ApproachChart({ lookup, selected }) {
         </div>
         <div>
           <span>Miss distance</span>
-          <strong>{formatMissMiles(selected.miss_lunar)}</strong>
+          <strong>{formatMissMiles(selected)}</strong>
         </div>
         <div>
           <span>Velocity</span>
@@ -1026,7 +1056,7 @@ function Inspector({ selected, lookup }) {
       <div className="metric-strip">
         <div>
           <Target size={20} />
-          <span>{formatMissMiles(selected.miss_lunar)}</span>
+          <span>{formatMissMiles(selected)}</span>
           <small>Miss distance</small>
         </div>
         <div>
@@ -1050,7 +1080,7 @@ function Inspector({ selected, lookup }) {
         <span>Closest to Earth</span>
         <strong>{formatApproachDate(closestApproach)}</strong>
         <span>Closest distance</span>
-        <strong>{formatMissMiles(closestApproach.miss_lunar)}</strong>
+        <strong>{formatMissMiles(closestApproach)}</strong>
         <span>Orbit class</span>
         <InfoTooltip content={selectedOrbitDescription}>
           <strong tabIndex={0}>{selectedOrbitLabel}</strong>
@@ -1125,7 +1155,7 @@ function TimelineControls({ progress, setProgress, playing, setPlaying, speed, s
 
 function DisplayOptions({ showGrid, setShowGrid, showTrails, setShowTrails, showLabels, setShowLabels, showHud, setShowHud }) {
   const options = [
-    { label: "Orbits", active: showTrails, set: setShowTrails, icon: Radar },
+    { label: "Paths", active: showTrails, set: setShowTrails, icon: Radar },
     { label: "Labels", active: showLabels, set: setShowLabels, icon: List },
     { label: "Grid", active: showGrid, set: setShowGrid, icon: Grid3X3 },
     { label: "HUD", active: showHud, set: setShowHud, icon: Crosshair },
@@ -1183,8 +1213,8 @@ function App() {
             <AsteroidScene objects={objects} selectedId={selected.id} progress={progress} playing={playing} showGrid={showGrid} showTrails={showTrails} showLabels={showLabels} showHud={showHud} />
             {showHud && (
               <>
-                <div className="scene-overlay top-left">Moon distance ~= 240,000 mi</div>
-                <div className="scene-overlay bottom-right">Selected trajectory: {selected.name}</div>
+                <div className="scene-overlay top-left">Moon = 1 LD (~238,855 mi); paths compressed</div>
+                <div className="scene-overlay bottom-right">Selected flyby: {selected.name}</div>
               </>
             )}
           </section>
