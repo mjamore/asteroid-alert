@@ -8,6 +8,7 @@ import "./styles.css";
 
 const NEO_DATA_URL = "/api/neo-data";
 const NEO_DATA_TIMEOUT_MS = 2000;
+const LOADING_OVERLAY_EXIT_MS = 1000;
 const DEFAULT_CAMERA_DISTANCE = 60;
 
 const FALLBACK_FEED = {
@@ -1174,9 +1175,9 @@ function TimelineControls({ progress, setProgress, playing, setPlaying, speed, s
   );
 }
 
-function LoadingOverlay() {
+function LoadingOverlay({ exiting }) {
   return (
-    <div className="loading-overlay" role="status" aria-live="polite">
+    <div className={`loading-overlay ${exiting ? "is-exiting" : ""}`} role="status" aria-live="polite">
       <div className="loading-panel">
         <Radar size={28} strokeWidth={1.7} />
         <p>Loading Live NASA Data</p>
@@ -1218,6 +1219,8 @@ function App() {
   const [showLabels, setShowLabels] = React.useState(true);
   const [showHud, setShowHud] = React.useState(true);
   const [isRevealing, setIsRevealing] = React.useState(false);
+  const [showLoadingOverlay, setShowLoadingOverlay] = React.useState(true);
+  const [isLoadingOverlayExiting, setIsLoadingOverlayExiting] = React.useState(false);
   const hasRevealed = React.useRef(false);
 
   const objects = React.useMemo(() => [...(feed.objects.length ? feed.objects : FALLBACK_FEED.objects)].sort((a, b) => scoreObject(b) - scoreObject(a)), [feed.objects]);
@@ -1241,14 +1244,24 @@ function App() {
     if (status === "loading") {
       hasRevealed.current = false;
       setIsRevealing(false);
+      setShowLoadingOverlay(true);
+      setIsLoadingOverlayExiting(false);
       return undefined;
     }
 
     if (hasRevealed.current) return undefined;
     hasRevealed.current = true;
     setIsRevealing(true);
+    setIsLoadingOverlayExiting(true);
     const revealTimer = window.setTimeout(() => setIsRevealing(false), 2000);
-    return () => window.clearTimeout(revealTimer);
+    const overlayTimer = window.setTimeout(() => {
+      setShowLoadingOverlay(false);
+      setIsLoadingOverlayExiting(false);
+    }, LOADING_OVERLAY_EXIT_MS);
+    return () => {
+      window.clearTimeout(revealTimer);
+      window.clearTimeout(overlayTimer);
+    };
   }, [status]);
 
   return (
@@ -1281,7 +1294,7 @@ function App() {
             setShowHud={setShowHud}
           />
         </footer>
-        {status === "loading" && <LoadingOverlay />}
+        {showLoadingOverlay && <LoadingOverlay exiting={isLoadingOverlayExiting} />}
         {isRevealing && <div className="reveal-veil" aria-hidden="true" />}
       </main>
     </TooltipProvider>

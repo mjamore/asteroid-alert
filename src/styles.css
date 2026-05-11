@@ -14,7 +14,12 @@
   --red: #ff6b4a;
   --shadow: 0 22px 70px rgba(0, 0, 0, 0.52);
   font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
     sans-serif;
 }
 
@@ -30,10 +35,7 @@ body,
 }
 
 body {
-  background:
-    radial-gradient(circle at 50% 30%, rgba(22, 201, 232, 0.12), transparent 34%),
-    radial-gradient(circle at 85% 20%, rgba(255, 191, 63, 0.08), transparent 26%),
-    #02050a;
+  background: radial-gradient(circle at 50% 30%, rgba(22, 201, 232, 0.12), transparent 34%), radial-gradient(circle at 85% 20%, rgba(255, 191, 63, 0.08), transparent 26%), #02050a;
   color: var(--text);
   overflow: hidden;
 }
@@ -148,7 +150,10 @@ button {
   background: rgba(2, 8, 12, 0.72);
   border-radius: 5px;
   cursor: pointer;
-  transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+  transition:
+    border-color 160ms ease,
+    color 160ms ease,
+    background 160ms ease;
 }
 
 .icon-button {
@@ -302,10 +307,7 @@ button {
   width: 15px;
   height: 15px;
   border-radius: 50%;
-  background:
-    radial-gradient(circle at 34% 30%, rgba(255, 255, 255, 0.8), transparent 12%),
-    radial-gradient(circle at 62% 68%, rgba(0, 0, 0, 0.42), transparent 22%),
-    var(--accent);
+  background: radial-gradient(circle at 34% 30%, rgba(255, 255, 255, 0.8), transparent 12%), radial-gradient(circle at 62% 68%, rgba(0, 0, 0, 0.42), transparent 22%), var(--accent);
   box-shadow: 0 0 18px color-mix(in srgb, var(--accent) 58%, transparent);
 }
 
@@ -350,9 +352,7 @@ button {
   inset: 0;
   z-index: 1;
   pointer-events: none;
-  background:
-    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background: linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
   background-size: 48px 48px;
   mask-image: radial-gradient(circle at center, transparent 15%, black 68%);
   opacity: 1;
@@ -531,9 +531,7 @@ button {
   width: 58px;
   aspect-ratio: 1;
   border-radius: 50%;
-  background:
-    radial-gradient(circle, rgba(5, 14, 18, 0.98) 55%, transparent 56%),
-    conic-gradient(from 225deg, var(--amber) var(--fill), rgba(143, 200, 211, 0.22) 0 270deg, transparent 0);
+  background: radial-gradient(circle, rgba(5, 14, 18, 0.98) 55%, transparent 56%), conic-gradient(from 225deg, var(--amber) var(--fill), rgba(143, 200, 211, 0.22) 0 270deg, transparent 0);
   border: 1px solid rgba(143, 200, 211, 0.22);
 }
 
@@ -601,9 +599,7 @@ button {
   margin-top: 8px;
   padding: 8px 6px 0;
   border: 1px solid rgba(143, 200, 211, 0.14);
-  background:
-    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
-    rgba(0, 0, 0, 0.18);
+  background: linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px), rgba(0, 0, 0, 0.18);
   background-size: 100% 24px;
 }
 
@@ -775,6 +771,12 @@ button {
   place-items: center;
   background: rgba(2, 5, 10, 0.78);
   backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.loading-overlay.is-exiting {
+  pointer-events: none;
+  animation: loading-overlay-exit 1000ms ease-out both;
 }
 
 .reveal-veil {
@@ -782,9 +784,7 @@ button {
   inset: 0;
   z-index: 29;
   pointer-events: none;
-  background:
-    radial-gradient(circle at 50% 44%, rgba(22, 201, 232, 0.13), transparent 34%),
-    rgba(2, 5, 10, 0.54);
+  background: radial-gradient(circle at 50% 44%, rgba(22, 201, 232, 0.13), transparent 34%), rgba(2, 5, 10, 0.54);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
   animation: dashboard-unblur 2000ms ease-out both;
@@ -825,6 +825,22 @@ button {
   }
 
   to {
+    background-color: rgba(2, 5, 10, 0);
+    backdrop-filter: blur(0);
+    -webkit-backdrop-filter: blur(0);
+  }
+}
+
+@keyframes loading-overlay-exit {
+  from {
+    opacity: 1;
+    background-color: rgba(2, 5, 10, 0.78);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+
+  to {
+    opacity: 0;
     background-color: rgba(2, 5, 10, 0);
     backdrop-filter: blur(0);
     -webkit-backdrop-filter: blur(0);
