@@ -49,6 +49,7 @@ button {
 }
 
 .app-shell {
+  position: relative;
   display: grid;
   grid-template-rows: 64px minmax(0, 1fr) 128px;
   grid-template-columns: minmax(270px, 26vw) minmax(360px, 1fr) minmax(315px, 25vw);
@@ -764,6 +765,43 @@ button {
   font-size: 0.66rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  background: rgba(2, 5, 10, 0.78);
+  backdrop-filter: blur(14px);
+}
+
+.loading-panel {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  width: min(320px, calc(100vw - 32px));
+  padding: 22px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: linear-gradient(145deg, rgba(3, 11, 16, 0.96), rgba(4, 12, 16, 0.86));
+  box-shadow: var(--shadow);
+  color: var(--cyan);
+  text-align: center;
+}
+
+.loading-panel strong {
+  color: var(--text);
+  font-size: 0.9rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.loading-panel span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
 }
 
 @media (max-width: 1180px) {

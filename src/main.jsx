@@ -7,6 +7,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./comp
 import "./styles.css";
 
 const NEO_DATA_URL = "/api/neo-data";
+const NEO_DATA_TIMEOUT_MS = 2000;
+const DEFAULT_CAMERA_DISTANCE = 60;
 
 const FALLBACK_FEED = {
   date: "2026-05-03",
@@ -360,13 +362,16 @@ function useNeoData() {
 
   React.useEffect(() => {
     let cancelled = false;
+    let timedOut = false;
+    const controller = new AbortController();
 
     async function loadData() {
       try {
-        const response = await fetch(NEO_DATA_URL);
+        const response = await fetch(NEO_DATA_URL, { signal: controller.signal });
         if (!response.ok) throw new Error("NASA API request failed");
         const { feed: feedJson, lookup: lookupJson } = await response.json();
-        if (!cancelled) {
+        if (!cancelled && !timedOut) {
+          window.clearTimeout(timeout);
           setData({
             feed: normalizeFeed(feedJson),
             lookup: normalizeLookup(lookupJson),
@@ -375,7 +380,8 @@ function useNeoData() {
           });
         }
       } catch (error) {
-        if (!cancelled) {
+        if (!cancelled && !timedOut) {
+          window.clearTimeout(timeout);
           setData((current) => ({
             ...current,
             status: "offline",
@@ -385,9 +391,23 @@ function useNeoData() {
       }
     }
 
+    const timeout = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+      if (!cancelled) {
+        setData((current) => ({
+          ...current,
+          status: "offline",
+          source: "NASA seed snapshot",
+        }));
+      }
+    }, NEO_DATA_TIMEOUT_MS);
+
     loadData();
     return () => {
       cancelled = true;
+      window.clearTimeout(timeout);
+      controller.abort();
     };
   }, []);
 
@@ -650,7 +670,7 @@ function getApproachPoint(layout, t) {
 function buildApproachPath(layout, color, selected) {
   const points = [];
   for (let i = 0; i <= ORBIT_SEGMENTS; i += 1) {
-    const t = i / ORBIT_SEGMENTS * 2 - 1;
+    const t = (i / ORBIT_SEGMENTS) * 2 - 1;
     points.push(getApproachPoint(layout, t));
   }
   const geometry = new THREE.BufferGeometry().setFromPoints(points);
@@ -731,7 +751,8 @@ function AsteroidScene({ objects, selectedId, progress, playing, showGrid, showT
     scene.fog = new THREE.FogExp2("#02050a", 0.006);
     const camera = new THREE.PerspectiveCamera(42, mount.clientWidth / mount.clientHeight, 0.1, 260);
     const initialTarget = new THREE.Vector3(0, 0, 0);
-    camera.position.set(0, 9.5, 22);
+    const initialCameraDirection = new THREE.Vector3(0, 9.5, 22).normalize();
+    camera.position.copy(initialCameraDirection.multiplyScalar(DEFAULT_CAMERA_DISTANCE));
     camera.lookAt(initialTarget);
 
     const controls = new OrbitControls(camera, renderer.domElement);
@@ -739,7 +760,7 @@ function AsteroidScene({ objects, selectedId, progress, playing, showGrid, showT
     controls.dampingFactor = 0.08;
     controls.enablePan = false;
     controls.minDistance = 4.2;
-    controls.maxDistance = 60;
+    controls.maxDistance = DEFAULT_CAMERA_DISTANCE;
     controls.target.copy(initialTarget);
     controls.update();
 
@@ -1145,11 +1166,22 @@ function TimelineControls({ progress, setProgress, playing, setPlaying, speed, s
         <select id="speed" value={speed} onChange={(event) => setSpeed(Number(event.target.value))}>
           <option value="0.5">0.5x</option>
           <option value="1">1.0x</option>
-          <option value="1.8">1.8x</option>
+          <option value="2">2.0x</option>
           <option value="3">3.0x</option>
         </select>
       </div>
     </section>
+  );
+}
+
+function LoadingOverlay() {
+  return (
+    <div className="loading-overlay" role="status" aria-live="polite">
+      <div className="loading-panel">
+        <Radar size={28} strokeWidth={1.7} />
+        <p>Loading Live NASA Data</p>
+      </div>
+    </div>
   );
 }
 
@@ -1233,6 +1265,7 @@ function App() {
             setShowHud={setShowHud}
           />
         </footer>
+        {status === "loading" && <LoadingOverlay />}
       </main>
     </TooltipProvider>
   );
