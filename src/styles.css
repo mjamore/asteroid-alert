@@ -777,6 +777,19 @@ button {
   backdrop-filter: blur(14px);
 }
 
+.reveal-veil {
+  position: fixed;
+  inset: 0;
+  z-index: 29;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 44%, rgba(22, 201, 232, 0.13), transparent 34%),
+    rgba(2, 5, 10, 0.54);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  animation: dashboard-unblur 2000ms ease-out both;
+}
+
 .loading-panel {
   display: grid;
   justify-items: center;
@@ -802,6 +815,20 @@ button {
   color: var(--muted);
   font-size: 0.72rem;
   line-height: 1.35;
+}
+
+@keyframes dashboard-unblur {
+  from {
+    background-color: rgba(2, 5, 10, 0.54);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+  }
+
+  to {
+    background-color: rgba(2, 5, 10, 0);
+    backdrop-filter: blur(0);
+    -webkit-backdrop-filter: blur(0);
+  }
 }
 
 @media (max-width: 1180px) {

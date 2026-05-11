@@ -1217,6 +1217,8 @@ function App() {
   const [showTrails, setShowTrails] = React.useState(true);
   const [showLabels, setShowLabels] = React.useState(true);
   const [showHud, setShowHud] = React.useState(true);
+  const [isRevealing, setIsRevealing] = React.useState(false);
+  const hasRevealed = React.useRef(false);
 
   const objects = React.useMemo(() => [...(feed.objects.length ? feed.objects : FALLBACK_FEED.objects)].sort((a, b) => scoreObject(b) - scoreObject(a)), [feed.objects]);
   const selected = objects.find((object) => object.id === selectedId) || objects[0];
@@ -1235,9 +1237,23 @@ function App() {
     }
   }, [objects, selectedId]);
 
+  React.useEffect(() => {
+    if (status === "loading") {
+      hasRevealed.current = false;
+      setIsRevealing(false);
+      return undefined;
+    }
+
+    if (hasRevealed.current) return undefined;
+    hasRevealed.current = true;
+    setIsRevealing(true);
+    const revealTimer = window.setTimeout(() => setIsRevealing(false), 2000);
+    return () => window.clearTimeout(revealTimer);
+  }, [status]);
+
   return (
     <TooltipProvider>
-      <main className="app-shell">
+      <main className={`app-shell ${status === "loading" ? "is-loading" : ""} ${isRevealing ? "is-revealing" : ""}`}>
         <StatusHeader date={feed.date} count={feed.count} source={source} status={status} />
         <div className="workspace">
           <ObjectList objects={objects} selectedId={selected.id} onSelect={setSelectedId} />
@@ -1266,6 +1282,7 @@ function App() {
           />
         </footer>
         {status === "loading" && <LoadingOverlay />}
+        {isRevealing && <div className="reveal-veil" aria-hidden="true" />}
       </main>
     </TooltipProvider>
   );
